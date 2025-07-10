@@ -37,7 +37,7 @@
             <div class="card shadow animate-fadeIn">
                 <div class="card-header bg-gradient-primary py-3">
                     <h6 class="m-0 font-weight-bold text-white">
-                        <i class="fas fa-edit me-2"></i>Form Tambah Kosakata
+                        <i class="fas fa-edit me-2"></i> Form Tambah Kosakata
                     </h6>
                 </div>
                 <div class="card-body">
@@ -48,7 +48,7 @@
                             <div class="col-md-6">
                                 <div class="mb-4">
                                     <label for="kata_jawa" class="form-label font-weight-bold">
-                                        <i class="fas fa-language text-primary me-1"></i>Kata Jawa
+                                        <i class="fas fa-language text-primary me-1"></i> Kata Jawa
                                         <span class="text-danger">*</span>
                                     </label>
                                     <input type="text" 
@@ -71,7 +71,7 @@
                             <div class="col-md-6">
                                 <div class="mb-4">
                                     <label for="kata_indonesia" class="form-label font-weight-bold">
-                                        <i class="fas fa-flag text-success me-1"></i>Kata Indonesia
+                                        <i class="fas fa-flag text-success me-1"></i> Kata Indonesia
                                         <span class="text-danger">*</span>
                                     </label>
                                     <input type="text" 
@@ -96,7 +96,7 @@
                             <div class="col-md-6">
                                 <div class="mb-4">
                                     <label for="jenis_kata" class="form-label font-weight-bold">
-                                        <i class="fas fa-tag text-info me-1"></i>Jenis Kata
+                                        <i class="fas fa-tag text-info me-1"></i> Jenis Kata
                                     </label>
                                     <select class="form-select form-select-lg @error('jenis_kata') is-invalid @enderror" 
                                             id="jenis_kata" 
@@ -120,7 +120,7 @@
 
                         <div class="mb-4">
                             <label for="contoh_kalimat" class="form-label font-weight-bold">
-                                <i class="fas fa-quote-left text-warning me-1"></i>Contoh Kalimat
+                                <i class="fas fa-quote-left text-warning me-1"></i> Contoh Kalimat
                             </label>
                             <textarea class="form-control @error('contoh_kalimat') is-invalid @enderror" 
                                       id="contoh_kalimat" 
@@ -138,7 +138,7 @@
 
                         <div class="mb-4">
                             <label for="contoh_kalimat_id" class="form-label font-weight-bold">
-                                <i class="fas fa-translate text-secondary me-1"></i>Arti Contoh Kalimat
+                                <i class="fas fa-translate text-secondary me-1"></i> Arti Contoh Kalimat
                             </label>
                             <textarea class="form-control @error('contoh_kalimat_id') is-invalid @enderror" 
                                       id="contoh_kalimat_id" 
@@ -157,14 +157,14 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-save me-2"></i>Simpan Kosakata
+                                    <i class="fas fa-save me-2"></i> Simpan Kosakata
                                 </button>
                                 <button type="reset" class="btn btn-secondary btn-lg">
-                                    <i class="fas fa-undo me-2"></i>Reset
+                                    <i class="fas fa-undo me-2"></i> Reset
                                 </button>
                             </div>
                             <a href="{{ route('dashboard.index') }}" class="btn btn-outline-secondary">
-                                <i class="fas fa-arrow-left me-1"></i>Kembali ke Dashboard
+                                <i class="fas fa-arrow-left me-1"></i> Kembali ke Dashboard
                             </a>
                         </div>
                     </form>
@@ -177,27 +177,27 @@
             <div class="card shadow animate-fadeIn" style="animation-delay: 0.2s;">
                 <div class="card-header bg-gradient-info">
                     <h6 class="m-0 font-weight-bold text-white">
-                        <i class="fas fa-question-circle me-2"></i>Panduan Pengisian
+                        <i class="fas fa-question-circle me-2"></i> Panduan Pengisian
                     </h6>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <h6 class="text-primary"><i class="fas fa-language me-1"></i>Kata Jawa</h6>
+                        <h6 class="text-primary"><i class="fas fa-language me-1"></i> Kata Jawa</h6>
                         <p class="small text-muted mb-0">Masukkan kata dalam bahasa Jawa yang ingin ditambahkan.</p>
                     </div>
                     <hr>
                     <div class="mb-3">
-                        <h6 class="text-success"><i class="fas fa-flag me-1"></i>Kata Indonesia</h6>
+                        <h6 class="text-success"><i class="fas fa-flag me-1"></i> Kata Indonesia</h6>
                         <p class="small text-muted mb-0">Masukkan terjemahan atau arti kata dalam bahasa Indonesia.</p>
                     </div>
                     <hr>
                     <div class="mb-3">
-                        <h6 class="text-info"><i class="fas fa-tag me-1"></i>Jenis Kata</h6>
+                        <h6 class="text-info"><i class="fas fa-tag me-1"></i> Jenis Kata</h6>
                         <p class="small text-muted mb-0">Pilih kategori jenis kata sesuai dengan fungsinya dalam kalimat.</p>
                     </div>
                     <hr>
                     <div class="mb-3">
-                        <h6 class="text-warning"><i class="fas fa-quote-left me-1"></i>Contoh Kalimat</h6>
+                        <h6 class="text-warning"><i class="fas fa-quote-left me-1"></i> Contoh Kalimat</h6>
                         <p class="small text-muted mb-0">Berikan contoh penggunaan kata dalam kalimat bahasa Jawa.</p>
                     </div>
                 </div>

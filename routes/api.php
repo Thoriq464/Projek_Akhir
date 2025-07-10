@@ -27,4 +27,5 @@ Route::get('/kosakata/{id}', [KosakataApiController::class, 'show']);
 Route::post('/kosakata/import', [\App\Http\Controllers\Api\KosakataApiController::class, 'importCsv']);
 
 // Dialogflow
-Route::post('/dialogflow/webhook', [DialogflowController::class, 'handleWebhook']);
+Route::post('/chatbot', [DialogflowController::class, 'handleFlutterRequest']);
+

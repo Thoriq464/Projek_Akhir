@@ -3,190 +3,291 @@
 namespace App\Http\Controllers;
 
 use App\Models\Kosakata;
-use Google\Cloud\Translate\V2\TranslateClient;
+use Google\Cloud\Dialogflow\Cx\V3\Client\SessionsClient;
+use Google\Cloud\Dialogflow\Cx\V3\DetectIntentRequest;
+use Google\Cloud\Dialogflow\Cx\V3\QueryInput;
+use Google\Cloud\Dialogflow\Cx\V3\TextInput;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
 class DialogflowController extends Controller
 {
     /**
-     * Menangani semua request webhook dari Dialogflow CX.
+     * [ENDPOINT UTAMA] Menerima request dari aplikasi Flutter.
+     * Ini adalah satu-satunya method yang perlu Anda definisikan di route Anda.
      */
-    public function handleWebhook(Request $request)
+    public function handleFlutterRequest(Request $request): JsonResponse
     {
-        // Log seluruh request untuk debugging
-        Log::info('Dialogflow CX Request: ' . json_encode($request->all()));
+        Log::info('Permintaan dari Flutter: ' . json_encode($request->all()));
 
-        // Ambil tag dari fulfillmentInfo untuk routing
-        $tag = $request->input('fulfillmentInfo.tag');
-        Log::info('TAG DITERIMA: ' . var_export($tag, true));
+        $pesanDariFlutter = $request->input('text');
+        $sessionId = $request->input('session_id', 'default-session-' . uniqid());
 
-        // Gunakan switch case untuk memanggil method yang sesuai berdasarkan tag
-        switch ($tag) {
-            // --- Terjemahan dari Jawa ke Indonesia ---
-            case 'jawa_indo':
-                Log::info('Masuk case: jawa_indo (Kamus)');
-                return $this->handleCariArtiKata($request);
+        if (!$pesanDariFlutter) {
+            return response()->json(['error' => 'Teks pesan tidak ditemukan'], 400);
+        }
 
-            case 'kalimat_jawa':
-                Log::info('Masuk case: kalimat_jawa (Translate API)');
-                return $this->handleTerjemahkanKalimat($request);
+        // Panggil Dialogflow CX dari backend
+        $dialogflowResponse = $this->callDialogflowCX($pesanDariFlutter, $sessionId);
 
-            // --- Terjemahan dari Indonesia ke Jawa (Fungsionalitas Baru) ---
-            case 'indo_jawa':
-                Log::info('Masuk case: indo_jawa (Kamus)');
-                return $this->handleCariKataJawa($request);
+        // [PERBAIKAN] Gunakan NAMA INTENT untuk routing, bukan TAG
+        $intentName = $dialogflowResponse['match']['intent']['displayName'] ?? null;
+        Log::info('INTENT DITERIMA: ' . var_export($intentName, true));
 
-            case 'kalimat_indo':
-                Log::info('Masuk case: kalimat_indo (Translate API)');
-                return $this->handleTerjemahkanKeJawa($request);
+        // Sekarang, switch case berdasarkan nama intent
+        switch ($intentName) {
+            case 'Apa_arti':
+                Log::info('Masuk case: Apa_arti (Kamus)');
+                return $this->handleCariArtiKata($dialogflowResponse);
+
+            case 'Kata_indo':
+                Log::info('Masuk case: Terjemahkan_Kata_Indo_Ke_Jawa (Kamus)');
+                return $this->handleCariKataJawa($dialogflowResponse);
+
+            case 'Kalimat_terjemahan':
+                Log::info('Masuk case: Kalimat_terjemahan (Database)');
+                return $this->handleTerjemahkanKalimat($dialogflowResponse);
+                
+            case 'Kalimat_indo':
+                Log::info('Masuk case: Kalimat_indo_ke_jawa (Database)');
+                return $this->handleTerjemahkanKeJawa($dialogflowResponse);
 
             default:
-                Log::warning('Tag tidak dikenali: ' . var_export($tag, true));
-                return $this->createWebhookResponse('Maaf, saya tidak mengerti perintah tersebut.');
+                Log::warning('Intent tidak dikenali atau tidak ada: ' . var_export($intentName, true));
+                return $this->passThroughResponse($dialogflowResponse);
         }
     }
 
     /**
-     * [Jawa -> Indonesia] Menangani pencarian arti untuk satu kata dari database.
+     * [INTERNAL] Berkomunikasi dengan Dialogflow CX API.
      */
-    private function handleCariArtiKata(Request $request)
+    private function callDialogflowCX(string $text, string $sessionId): array
     {
-        $params = $request->input('intentInfo.parameters');
-        $kataJawa = $params['kata_jawa']['resolvedValue'] ?? null;
-        if (is_array($kataJawa)) {
-            $kataJawa = $kataJawa[0] ?? null;
-        }
+        try {
+            $credentialsPath = env('GOOGLE_APPLICATION_CREDENTIALS');
+            if (!$credentialsPath || !file_exists($credentialsPath)) {
+                throw new \Exception("File kredensial Google tidak ditemukan. Pastikan GOOGLE_APPLICATION_CREDENTIALS di .env sudah benar.");
+            }
+            $credentialsArray = json_decode(file_get_contents($credentialsPath), true);
+            
+            $locationId = env('DIALOGFLOW_LOCATION_ID');
+            $sessionsClient = new SessionsClient([
+                'credentials' => $credentialsArray,
+                'apiEndpoint' => $locationId . '-dialogflow.googleapis.com'
+            ]);
 
-        if (!$kataJawa) {
-            Log::warning('Parameter "kata_jawa" tidak ditemukan untuk tag "jawa_indo".');
+            $sessionName = $sessionsClient->sessionName(
+                env('DIALOGFLOW_PROJECT_ID'),
+                $locationId,
+                env('DIALOGFLOW_AGENT_ID'),
+                $sessionId
+            );
+
+            $textInput = new TextInput(['text' => $text]);
+            $queryInput = new QueryInput(['text' => $textInput, 'language_code' => 'id']);
+            
+            $request = new DetectIntentRequest();
+            $request->setSession($sessionName);
+            $request->setQueryInput($queryInput);
+
+            $response = $sessionsClient->detectIntent($request);
+            $queryResult = $response->getQueryResult();
+            Log::info('Respons Mentah dari Dialogflow: ' . $queryResult->serializeToJsonString());
+
+            $responseArray = json_decode($queryResult->serializeToJsonString(), true);
+            $sessionsClient->close();
+            return $responseArray;
+
+        } catch (\Exception $e) {
+            Log::error('Dialogflow CX API error: ' . $e->getMessage() . ' di file ' . $e->getFile() . ' baris ' . $e->getLine());
+            return [
+                'match' => ['intent' => ['displayName' => null]],
+                'responseMessages' => [
+                    ['text' => ['text' => ['Maaf, terjadi kesalahan pada asisten AI. Silakan coba lagi nanti.']]]
+                ]
+            ];
+        }
+    }
+    
+    // --- METHOD-METHOD PENANGANAN INTENT ---
+
+    private function handleCariArtiKata(array $dialogflowResponse): JsonResponse
+    {
+        $params = $dialogflowResponse['parameters'] ?? [];
+        $kataJawaValues = $params['kata_jawa'] ?? [];
+        if (!is_array($kataJawaValues)) $kataJawaValues = [$kataJawaValues];
+        
+        // PERBAIKAN: Gunakan teks asli dari user jika parameter Dialogflow salah
+        $originalText = $dialogflowResponse['text'] ?? '';
+        
+        // Extract kata yang dicari dari teks asli
+        if (preg_match('/(?:apa arti|artinya|arti dari)\s+(.+?)(?:\?|$)/i', $originalText, $matches)) {
+            $kataAsli = trim($matches[1]);
+            Log::info("Kata asli dari user: '$kataAsli'");
+            // Gunakan kata asli sebagai prioritas utama
+            array_unshift($kataJawaValues, $kataAsli);
+            $kataJawaValues = array_unique($kataJawaValues);
+        }
+        
+        if (empty($kataJawaValues[0])) {
             return $this->createWebhookResponse('Maaf, kata apa yang ingin Anda cari artinya?');
         }
 
-        // Cari kata di database
-        $kosakata = Kosakata::where('kata_jawa', $kataJawa)->first();
-
-        if ($kosakata) {
-            $arti = $kosakata->kata_indonesia;
-            $responseText = "Arti dari \"$kataJawa\" adalah \"$arti\".";
-        } else {
-            $responseText = "Maaf, arti kata \"$kataJawa\" tidak ditemukan dalam kamus kami.";
+        $responses = [];
+        foreach ($kataJawaValues as $kata) {
+            $kataBersih = preg_replace('/[.,!?;:\"\'()]/', '', strtolower(trim($kata)));
+            if (empty($kataBersih)) continue;
+            
+            Log::info("Mencari kata: '$kataBersih'");
+            
+            // Debug: tampilkan semua kata yang cocok
+            $semuaKataDebug = Kosakata::whereRaw('LOWER(TRIM(kata_jawa)) = ?', [$kataBersih])
+                                     ->get(['id', 'kata_jawa', 'kata_indonesia']);
+            
+            Log::info("Semua kata yang ditemukan untuk '$kataBersih': " . 
+                     $semuaKataDebug->map(function($k) {
+                         return "ID:{$k->id} '{$k->kata_jawa}'=>'{$k->kata_indonesia}'";
+                     })->implode(', '));
+            
+            // Cari dengan prioritas: exact match dulu, lalu yang terpendek
+            $kosakata = Kosakata::whereRaw('LOWER(TRIM(kata_jawa)) = ?', [$kataBersih])
+                               ->orderByRaw("CASE WHEN kata_jawa = ? THEN 0 ELSE 1 END", [$kataBersih]) // Prioritas exact case match
+                               ->orderByRaw('LENGTH(kata_jawa) ASC') // Lalu yang terpendek
+                               ->orderBy('id', 'ASC') // Terakhir urutkan berdasarkan ID (yang lebih dulu ditambahkan)
+                               ->first();
+            
+            if ($kosakata) {
+                Log::info("Kata dipilih: ID:{$kosakata->id} '{$kosakata->kata_jawa}' = '{$kosakata->kata_indonesia}'");
+                $responses[] = "{$kata}: {$kosakata->kata_indonesia}";
+                break; // Keluar dari loop setelah menemukan kata pertama
+            } else {
+                Log::warning("Kata '$kataBersih' tidak ditemukan di database.");
+            }
         }
-
-        Log::info('Respons untuk jawa_indo: ' . $responseText);
-        return $this->createWebhookResponse($responseText);
+        
+        if (empty($responses)) {
+            return $this->createWebhookResponse("Maaf, kata yang Anda cari tidak ditemukan di kamus.");
+        }
+        
+        return $this->createWebhookResponse(implode("\n", $responses));
     }
 
-    /**
-     * [Jawa -> Indonesia] Menangani terjemahan kalimat menggunakan Google Translate API.
-     */
-    private function handleTerjemahkanKalimat(Request $request)
+    private function handleCariKataJawa(array $dialogflowResponse): JsonResponse
     {
-        $params = $request->input('intentInfo.parameters');
-        $kalimatJawa = $params['kalimat_jawa']['resolvedValue'] ?? null;
+        $params = $dialogflowResponse['parameters'] ?? [];
+        $kataIndoValues = $params['kata_indonesia'] ?? [];
+        if (!is_array($kataIndoValues)) $kataIndoValues = [$kataIndoValues];
+        
+        if (empty($kataIndoValues[0])) {
+            return $this->createWebhookResponse('Maaf, kata apa yang ingin Anda terjemahkan ke bahasa Jawa?');
+        }
+
+        $responses = [];
+        foreach ($kataIndoValues as $kata) {
+            // Bersihkan tanda baca dan normalisasi ke huruf kecil
+            $kataBersih = preg_replace('/[.,!?;:\"\'()]/', '', strtolower(trim($kata)));
+            if (empty($kataBersih)) continue; // Lewati jika kata kosong setelah pembersihan
+            $kosakata = Kosakata::whereRaw('LOWER(kata_indonesia) = ?', [$kataBersih])->first();
+            if ($kosakata) {
+                $responses[] = "{$kata}: {$kosakata->kata_jawa}";
+            } else {
+                $responses[] = "{$kata}: (tidak ditemukan di kamus)";
+                Log::warning("Kata '$kataBersih' tidak ditemukan di database.");
+            }
+        }
+        return $this->createWebhookResponse(implode("\n", $responses));
+    }
+    
+    private function handleTerjemahkanKalimat(array $dialogflowResponse): JsonResponse
+    {
+        $params = $dialogflowResponse['parameters'] ?? [];
+        $kalimatJawa = $params['kalimat_jawa'] ?? null;
 
         if (!$kalimatJawa) {
-            Log::warning('Parameter "kalimat_jawa" tidak ditemukan untuk tag "kalimat_jawa".');
+            Log::warning('Parameter "kalimat_jawa" tidak ditemukan.');
             return $this->createWebhookResponse('Maaf, kalimat apa yang ingin Anda terjemahkan?');
         }
 
-        return $this->translateText($kalimatJawa, 'jw', 'id');
-    }
+        // Pecah kalimat menjadi array kata dan bersihkan tanda baca
+        $kataJawaArray = array_filter(array_map(function ($kata) {
+            return preg_replace('/[.,!?;:\"\'()]/', '', strtolower(trim($kata)));
+        }, explode(' ', trim($kalimatJawa))), fn($kata) => !empty($kata));
+        $terjemahan = [];
 
-    /**
-     * [Indonesia -> Jawa] Menangani pencarian padanan kata dari database.
-     */
-    private function handleCariKataJawa(Request $request)
-    {
-        $params = $request->input('intentInfo.parameters');
-        $kataIndonesia = $params['kata_indonesia']['resolvedValue'] ?? null;
-        if (is_array($kataIndonesia)) {
-            $kataIndonesia = $kataIndonesia[0] ?? null;
+        // Cari terjemahan setiap kata di database
+        foreach ($kataJawaArray as $kata) {
+            $kosakata = Kosakata::whereRaw('LOWER(kata_jawa) = ?', [$kata])->first();
+            if ($kosakata) {
+                $terjemahan[] = $kosakata->kata_indonesia;
+            } else {
+                $terjemahan[] = $kata;
+                Log::warning("Kata '$kata' tidak ditemukan di database.");
+            }
         }
 
-        if (!$kataIndonesia) {
-            Log::warning('Parameter "kata_indonesia" tidak ditemukan untuk tag "indo_jawa".');
-            return $this->createWebhookResponse('Maaf, kata apa yang ingin Anda cari padanannya dalam bahasa Jawa?');
-        }
+        // Susun kalimat terjemahan
+        $kalimatTerjemahan = implode(' ', $terjemahan);
+        $responseText = "Artinya adalah: $kalimatTerjemahan.";
 
-        // Cari kata di database
-        $kosakata = Kosakata::where('kata_indonesia', $kataIndonesia)->first();
-
-        if ($kosakata) {
-            $kataJawa = $kosakata->kata_jawa;
-            $responseText = "Dalam bahasa Jawa, \"$kataIndonesia\" adalah \"$kataJawa\".";
-        } else {
-            $responseText = "Maaf, padanan kata untuk \"$kataIndonesia\" tidak ditemukan dalam kamus kami.";
-        }
-
-        Log::info('Respons untuk indo_jawa: ' . $responseText);
         return $this->createWebhookResponse($responseText);
     }
 
-    /**
-     * [Indonesia -> Jawa] Menangani terjemahan kalimat menggunakan Google Translate API.
-     */
-    private function handleTerjemahkanKeJawa(Request $request)
+    private function handleTerjemahkanKeJawa(array $dialogflowResponse): JsonResponse
     {
-        $params = $request->input('intentInfo.parameters');
-        $kalimatIndonesia = $params['kalimat_indonesia']['resolvedValue'] ?? null;
+        $params = $dialogflowResponse['parameters'] ?? [];
+        $kalimatIndonesia = $params['kalimat_indonesia'] ?? null;
 
         if (!$kalimatIndonesia) {
-            Log::warning('Parameter "kalimat_indonesia" tidak ditemukan untuk tag "kalimat_indo".');
+            Log::warning('Parameter "kalimat_indonesia" tidak ditemukan.');
             return $this->createWebhookResponse('Maaf, kalimat apa yang ingin Anda terjemahkan?');
         }
 
-        return $this->translateText($kalimatIndonesia, 'id', 'jw');
-    }
+        // Pecah kalimat menjadi array kata dan bersihkan tanda baca
+        $kataIndoArray = array_filter(array_map(function ($kata) {
+            return preg_replace('/[.,!?;:\"\'()]/', '', strtolower(trim($kata)));
+        }, explode(' ', trim($kalimatIndonesia))), fn($kata) => !empty($kata));
+        $terjemahan = [];
 
-    /**
-     * Fungsi terpusat untuk memanggil Google Translate API.
-     *
-     * @param string $textToTranslate Teks yang akan diterjemahkan.
-     * @param string $sourceLang Kode bahasa sumber (e.g., 'id', 'jw').
-     * @param string $targetLang Kode bahasa tujuan (e.g., 'id', 'jw').
-     * @return \Illuminate\Http\JsonResponse
-     */
-    private function translateText(string $textToTranslate, string $sourceLang, string $targetLang)
-    {
-        try {
-            // Inisialisasi Google Translate client
-            $translate = new TranslateClient(['key' => env('GOOGLE_CLOUD_API_KEY')]);
-
-            // Terjemahkan teks
-            $result = $translate->translate($textToTranslate, [
-                'source' => $sourceLang,
-                'target' => $targetLang
-            ]);
-
-            $terjemahan = $result['text'];
-            $responseText = "Terjemahannya adalah:\n\"$terjemahan\"";
-
-            Log::info("Respons terjemahan ($sourceLang -> $targetLang): " . $responseText);
-            return $this->createWebhookResponse($responseText);
-
-        } catch (\Exception $e) {
-            // Tangani error jika terjadi masalah dengan API
-            Log::error('Google Translate API error: ' . $e->getMessage());
-            return $this->createWebhookResponse('Maaf, terjadi kesalahan saat mencoba menerjemahkan kalimat.');
+        // Cari terjemahan setiap kata di database
+        foreach ($kataIndoArray as $kata) {
+            $kosakata = Kosakata::whereRaw('LOWER(kata_indonesia) = ?', [$kata])->first();
+            if ($kosakata) {
+                $terjemahan[] = $kosakata->kata_jawa;
+            } else {
+                $terjemahan[] = $kata;
+                Log::warning("Kata '$kata' tidak ditemukan di database.");
+            }
         }
+
+        // Susun kalimat terjemahan
+        $kalimatTerjemahan = implode(' ', $terjemahan);
+        $responseText = "Terjemahannya adalah: $kalimatTerjemahan.";
+
+        return $this->createWebhookResponse($responseText);
     }
 
-    /**
-     * Helper function untuk membuat struktur respons JSON yang benar untuk Dialogflow CX.
-     */
-    private function createWebhookResponse(string $text): \Illuminate\Http\JsonResponse
+    private function createWebhookResponse(string $text): JsonResponse
     {
+        // Format respons ini harus cocok dengan yang diharapkan oleh Flutter
         return response()->json([
             'fulfillmentResponse' => [
                 'messages' => [
                     [
                         'text' => [
-                            'text' => [$text] // Respons harus dalam bentuk array of strings
+                            'text' => [$text]
                         ]
                     ]
                 ]
             ]
         ]);
+    }
+    
+    private function passThroughResponse(array $dialogflowResponse): JsonResponse
+    {
+        $responseText = $dialogflowResponse['responseMessages'][0]['text']['text'][0] 
+                        ?? 'Maaf, saya tidak mengerti maksud Anda.';
+
+        return $this->createWebhookResponse($responseText);
     }
 }

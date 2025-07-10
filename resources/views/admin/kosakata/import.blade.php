@@ -77,16 +77,23 @@
                                 File CSV
                             </label>
                             <div class="custom-file">
-                                <input type="file" class="custom-file-input" id="csv_file" name="csv_file" accept=".csv,.txt" required>
+                                <input type="file" class="custom-file-input" id="csv_file" name="csv_file" accept=".csv" required>
                                 <label class="custom-file-label" for="csv_file">Pilih file CSV...</label>
                                 <div class="invalid-feedback">
                                     Silakan pilih file CSV yang valid.
                                 </div>
-                            </div>
-                            <small class="form-text text-muted mt-2">
+                            </div>                            <small class="form-text text-muted mt-2">
                                 <i class="fas fa-info-circle mr-1"></i>
-                                File harus berformat CSV (.csv) atau text (.txt) dengan ukuran maksimal 2MB
+                                File harus berformat CSV (.csv) dengan ukuran maksimal 2MB
                             </small>
+                        </div>                        <div class="form-group mt-4 mb-0">
+                            <div class="d-flex justify-content-end align-items-center">
+                                <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                                    <i class="fas fa-upload mr-2"></i>
+                                    <span id="submitText">Upload & Import Data</span>
+                                    <span id="loadingSpinner" class="spinner-border spinner-border-sm ml-2" style="display: none;"></span>
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -144,7 +151,43 @@ document.addEventListener('DOMContentLoaded', function() {
     // Custom file input
     $('.custom-file-input').on('change', function() {
         var fileName = $(this).val().split('\\').pop();
-        $(this).siblings('.custom-file-label').addClass('selected').html(fileName);
+        var fileExtension = fileName.split('.').pop().toLowerCase();
+        var submitBtn = document.getElementById('submitBtn');
+        
+        if (fileName) {
+            $(this).siblings('.custom-file-label').addClass('selected').html(fileName);
+            
+            // Enable submit button if valid file
+            if (fileExtension === 'csv' || fileExtension === 'txt') {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-secondary');
+                submitBtn.classList.add('btn-success');
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.classList.remove('btn-success');
+                submitBtn.classList.add('btn-secondary');
+            }
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.classList.remove('btn-success');
+            submitBtn.classList.add('btn-secondary');
+        }
+    });
+
+    // Form submission with loading state
+    $('form').on('submit', function() {
+        var submitBtn = document.getElementById('submitBtn');
+        var submitText = document.getElementById('submitText');
+        var loadingSpinner = document.getElementById('loadingSpinner');
+        
+        // Disable button and show loading
+        submitBtn.disabled = true;
+        submitText.textContent = 'Sedang Mengupload...';
+        loadingSpinner.style.display = 'inline-block';
+        
+        // Change button color to indicate processing
+        submitBtn.classList.remove('btn-success');
+        submitBtn.classList.add('btn-warning');
     });
 
     // Form validation
@@ -157,6 +200,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (form.checkValidity() === false) {
                         event.preventDefault();
                         event.stopPropagation();
+                        
+                        // Reset button state if validation fails
+                        var submitBtn = document.getElementById('submitBtn');
+                        var submitText = document.getElementById('submitText');
+                        var loadingSpinner = document.getElementById('loadingSpinner');
+                        
+                        submitBtn.disabled = false;
+                        submitText.textContent = 'Upload & Import Data';
+                        loadingSpinner.style.display = 'none';
+                        submitBtn.classList.remove('btn-warning');
+                        submitBtn.classList.add('btn-success');
                     }
                     form.classList.add('was-validated');
                 }, false);
@@ -200,11 +254,39 @@ code {
 .btn {
     border-radius: 8px;
     transition: all 0.3s ease;
+    font-weight: 600;
 }
 
 .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.btn:disabled {
+    transform: none !important;
+    box-shadow: none !important;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-lg {
+    padding: 12px 24px;
+    font-size: 1rem;
+}
+
+#submitBtn {
+    min-width: 200px;
+    position: relative;
+}
+
+#submitBtn:disabled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
 }
 </style>
 @endsection

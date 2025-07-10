@@ -17,16 +17,12 @@ class LoginController extends Controller
         $credentials = $request->validate([
             'name' => 'required|string',
             'password' => 'required|string',
-        ]);
-
-        if (Auth::attempt($credentials)) {
+        ]);        if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
 
             return redirect()->intended(route('dashboard.index')); // Ganti dengan route dashboard Anda
         }
 
-        return back()->withErrors([
-            'name' => 'The provided credentials do not match our records.',
-        ]);
+        return back()->with('error', 'Username atau password yang Anda masukkan salah. Silakan coba lagi.');
     }
 }
